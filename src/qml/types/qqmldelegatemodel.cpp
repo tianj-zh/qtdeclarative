@@ -898,7 +898,11 @@ void QQmlDelegateModelPrivate::incubatorStatusChanged(QQDMIncubationTask *incuba
 
 void QQDMIncubationTask::setInitialState(QObject *o)
 {
-    vdm->setInitialState(this, o);
+    if (vdm) {
+        vdm->setInitialState(this, o);
+    } else {
+        qWarning("QQDMIncubationTask::setInitialState vdm is null");
+    }
 }
 
 void QQmlDelegateModelPrivate::setInitialState(QQDMIncubationTask *incubationTask, QObject *o)
