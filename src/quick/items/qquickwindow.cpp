@@ -2070,6 +2070,7 @@ void QQuickWindowPrivate::reallyDeliverTouchEvent(QTouchEvent *event)
             qWarning() << "No release received for" << itemForTouchPointId.size()
                 << "touch points over" << itemForTouchPointId.begin().value()
                 << "on touch end.";
+            touchMouseId = -1;
             itemForTouchPointId.clear();
         }
     }
