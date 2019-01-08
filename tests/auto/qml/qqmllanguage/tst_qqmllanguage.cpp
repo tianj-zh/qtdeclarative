@@ -611,6 +611,9 @@ void tst_qqmllanguage::errors_data()
 
     QTest::newRow("badCompositeRegistration.1") << "badCompositeRegistration.1.qml" << "badCompositeRegistration.1.errors.txt" << false;
     QTest::newRow("badCompositeRegistration.2") << "badCompositeRegistration.2.qml" << "badCompositeRegistration.2.errors.txt" << false;
+
+    QTest::newRow("typeAnnotations") << "typeAnnotations.qml" << "typeAnnotations.errors.txt" << false;
+    QTest::newRow("typeAnnotations.2") << "typeAnnotations.2.qml" << "typeAnnotations.2.errors.txt" << false;
 }
 
 

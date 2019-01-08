@@ -297,6 +297,9 @@ public:
       AST::ExportsList *ExportsList;
       AST::ExportClause *ExportClause;
       AST::ExportDeclaration *ExportDeclaration;
+      AST::TypeAnnotation *TypeAnnotation;
+      AST::TypeArgumentList *TypeArgumentList;
+      AST::Type *Type;
 
       AST::UiProgram *UiProgram;
       AST::UiHeaderItemList *UiHeaderItemList;
@@ -1391,6 +1394,54 @@ JsIdentifier: T_AS;
 
 IdentifierReference: JsIdentifier;
 BindingIdentifier: IdentifierReference;
+
+--------------------------------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------------------------------
+
+TypeArguments: Type;
+/.
+    case $rule_number: {
+        sym(1).TypeArgumentList = new (pool) AST::TypeArgumentList(sym(1).Type);
+    } break;
+./
+
+TypeArguments: TypeArguments T_COMMA Type;
+/.
+    case $rule_number: {
+        sym(1).TypeArgumentList = new (pool) AST::TypeArgumentList(sym(1).TypeArgumentList, sym(3).Type);
+    } break;
+./
+
+Type: UiQualifiedId T_LT TypeArguments T_GT;
+/.
+    case $rule_number: {
+        sym(1).Type = new (pool) AST::Type(sym(1).UiQualifiedId, sym(3).TypeArgumentList->finish());
+    } break;
+./
+
+Type: UiQualifiedId;
+/.
+    case $rule_number: {
+        sym(1).Type = new (pool) AST::Type(sym(1).UiQualifiedId);
+    } break;
+./
+
+TypeAnnotation: T_COLON Type;
+/.
+    case $rule_number: {
+        sym(1).TypeAnnotation = new (pool) AST::TypeAnnotation(sym(2).Type);
+        sym(1).TypeAnnotation->colonToken = loc(1);
+    } break;
+./
+
+TypeAnnotationOpt: TypeAnnotation;
+TypeAnnotationOpt: ;
+/.
+    case $rule_number: {
+        sym(1).TypeAnnotation = nullptr;
+    } break;
+./
 
 --------------------------------------------------------------------------------------------------------
 -- Expressions
@@ -2814,22 +2865,22 @@ VariableDeclarationList_In: VariableDeclarationList_In T_COMMA VariableDeclarati
     } break;
 ./
 
-LexicalBinding: BindingIdentifier InitializerOpt;
+LexicalBinding: BindingIdentifier TypeAnnotationOpt InitializerOpt;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
-LexicalBinding_In: BindingIdentifier InitializerOpt_In;
+LexicalBinding_In: BindingIdentifier TypeAnnotationOpt InitializerOpt_In;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
-VariableDeclaration: BindingIdentifier InitializerOpt;
+VariableDeclaration: BindingIdentifier TypeAnnotationOpt InitializerOpt;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
-VariableDeclaration_In: BindingIdentifier InitializerOpt_In;
+VariableDeclaration_In: BindingIdentifier TypeAnnotationOpt InitializerOpt_In;
 /.
     case $rule_number: {
-        auto *node = new (pool) AST::PatternElement(stringRef(1), sym(2).Expression);
+        auto *node = new (pool) AST::PatternElement(stringRef(1), sym(2).TypeAnnotation, sym(3).Expression);
         node->identifierToken = loc(1);
         sym(1).Node = node;
         // if initializer is an anonymous function expression, we need to assign identifierref as it's name
-        if (auto *f = asAnonymousFunctionDefinition(sym(2).Expression))
+        if (auto *f = asAnonymousFunctionDefinition(sym(3).Expression))
             f->name = stringRef(1);
-        if (auto *c = asAnonymousClassDefinition(sym(2).Expression))
+        if (auto *c = asAnonymousClassDefinition(sym(3).Expression))
             c->name = stringRef(1);
     } break;
 ./
@@ -2979,15 +3030,15 @@ BindingProperty: PropertyName T_COLON BindingPattern InitializerOpt_In;
     } break;
 ./
 
-BindingElement: BindingIdentifier InitializerOpt_In;
+BindingElement: BindingIdentifier TypeAnnotationOpt InitializerOpt_In;
 /.
     case $rule_number: {
-      AST::PatternElement *node = new (pool) AST::PatternElement(stringRef(1), sym(2).Expression);
+      AST::PatternElement *node = new (pool) AST::PatternElement(stringRef(1), sym(2).TypeAnnotation, sym(3).Expression);
       node->identifierToken = loc(1);
       // if initializer is an anonymous function expression, we need to assign identifierref as it's name
-      if (auto *f = asAnonymousFunctionDefinition(sym(2).Expression))
+      if (auto *f = asAnonymousFunctionDefinition(sym(3).Expression))
           f->name = stringRef(1);
-      if (auto *c = asAnonymousClassDefinition(sym(2).Expression))
+      if (auto *c = asAnonymousClassDefinition(sym(3).Expression))
           c->name = stringRef(1);
       sym(1).Node = node;
     } break;
@@ -3004,7 +3055,7 @@ BindingElement: BindingPattern InitializerOpt_In;
 BindingRestElement: T_ELLIPSIS BindingIdentifier;
 /.
     case $rule_number: {
-        AST::PatternElement *node = new (pool) AST::PatternElement(stringRef(2), nullptr, AST::PatternElement::RestElement);
+        AST::PatternElement *node = new (pool) AST::PatternElement(stringRef(2), /*type annotation*/nullptr, nullptr, AST::PatternElement::RestElement);
         node->identifierToken = loc(2);
         sym(1).Node = node;
     } break;
@@ -3486,59 +3537,63 @@ DebuggerStatement: T_DEBUGGER T_SEMICOLON;
 -- otherwise conflict.
 Function: T_FUNCTION %prec REDUCE_HERE;
 
-FunctionDeclaration: Function BindingIdentifier T_LPAREN FormalParameters T_RPAREN FunctionLBrace FunctionBody FunctionRBrace;
+FunctionDeclaration: Function BindingIdentifier T_LPAREN FormalParameters T_RPAREN TypeAnnotationOpt FunctionLBrace FunctionBody FunctionRBrace;
 /.
     case $rule_number: {
-        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(stringRef(2), sym(4).FormalParameterList, sym(7).StatementList);
+        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList,
+                                                                             sym(6).TypeAnnotation);
         node->functionToken = loc(1);
         node->identifierToken = loc(2);
         node->lparenToken = loc(3);
         node->rparenToken = loc(5);
-        node->lbraceToken = loc(6);
-        node->rbraceToken = loc(8);
+        node->lbraceToken = loc(7);
+        node->rbraceToken = loc(9);
         sym(1).Node = node;
     } break;
 ./
 
 
 FunctionDeclaration_Default: FunctionDeclaration;
-FunctionDeclaration_Default: Function T_LPAREN FormalParameters T_RPAREN FunctionLBrace FunctionBody FunctionRBrace;
+FunctionDeclaration_Default: Function T_LPAREN FormalParameters T_RPAREN TypeAnnotationOpt FunctionLBrace FunctionBody FunctionRBrace;
 /.
     case $rule_number: {
-        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(QStringRef(), sym(3).FormalParameterList, sym(6).StatementList);
+        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(QStringRef(), sym(3).FormalParameterList, sym(7).StatementList,
+                                                                             sym(5).TypeAnnotation);
         node->functionToken = loc(1);
         node->lparenToken = loc(2);
         node->rparenToken = loc(4);
-        node->lbraceToken = loc(5);
-        node->rbraceToken = loc(7);
-        sym(1).Node = node;
-    } break;
-./
-
-FunctionExpression: T_FUNCTION BindingIdentifier T_LPAREN FormalParameters T_RPAREN FunctionLBrace FunctionBody FunctionRBrace;
-/.
-    case $rule_number: {
-        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(stringRef(2), sym(4).FormalParameterList, sym(7).StatementList);
-        node->functionToken = loc(1);
-        if (! stringRef(2).isNull())
-          node->identifierToken = loc(2);
-        node->lparenToken = loc(3);
-        node->rparenToken = loc(5);
         node->lbraceToken = loc(6);
         node->rbraceToken = loc(8);
         sym(1).Node = node;
     } break;
 ./
 
-FunctionExpression: T_FUNCTION T_LPAREN FormalParameters T_RPAREN FunctionLBrace FunctionBody FunctionRBrace;
+FunctionExpression: T_FUNCTION BindingIdentifier T_LPAREN FormalParameters T_RPAREN TypeAnnotationOpt FunctionLBrace FunctionBody FunctionRBrace;
 /.
     case $rule_number: {
-        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(QStringRef(), sym(3).FormalParameterList, sym(6).StatementList);
+        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList,
+                                                                           sym(6).TypeAnnotation);
+        node->functionToken = loc(1);
+        if (! stringRef(2).isNull())
+          node->identifierToken = loc(2);
+        node->lparenToken = loc(3);
+        node->rparenToken = loc(5);
+        node->lbraceToken = loc(7);
+        node->rbraceToken = loc(9);
+        sym(1).Node = node;
+    } break;
+./
+
+FunctionExpression: T_FUNCTION T_LPAREN FormalParameters T_RPAREN TypeAnnotationOpt FunctionLBrace FunctionBody FunctionRBrace;
+/.
+    case $rule_number: {
+        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(QStringRef(), sym(3).FormalParameterList, sym(7).StatementList,
+                                                                           sym(5).TypeAnnotation);
         node->functionToken = loc(1);
         node->lparenToken = loc(2);
         node->rparenToken = loc(4);
-        node->lbraceToken = loc(5);
-        node->rbraceToken = loc(7);
+        node->lbraceToken = loc(6);
+        node->rbraceToken = loc(8);
         sym(1).Node = node;
     } break;
 ./
@@ -3648,7 +3703,7 @@ ArrowFunction_In: ArrowParameters T_ARROW ConciseBodyLookahead T_FORCE_BLOCK Fun
 ArrowParameters: BindingIdentifier;
 /.
     case $rule_number: {
-        AST::PatternElement *e = new (pool) AST::PatternElement(stringRef(1), nullptr, AST::PatternElement::Binding);
+        AST::PatternElement *e = new (pool) AST::PatternElement(stringRef(1), /*type annotation*/nullptr, nullptr, AST::PatternElement::Binding);
         e->identifierToken = loc(1);
         sym(1).FormalParameterList = (new (pool) AST::FormalParameterList(nullptr, e))->finish(pool);
     } break;

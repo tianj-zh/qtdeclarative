@@ -682,6 +682,11 @@ bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParamete
             _context->isArrowFunction = true;
         else if (expr->isGenerator)
             _context->isGenerator = true;
+
+        if (expr->typeAnnotation && !_cg->permitTypeAnnotations) {
+            _cg->throwSyntaxError(ast->firstSourceLocation(), QLatin1String("Type annotations are not supported (yet)."));
+            return false;
+        }
     }
 
 

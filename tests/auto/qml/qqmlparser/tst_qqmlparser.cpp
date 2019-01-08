@@ -53,6 +53,10 @@ private slots:
     void stringLiteral();
     void noSubstitutionTemplateLiteral();
     void templateLiteral();
+#if !defined(QTEST_CROSS_COMPILED) // sources not available when cross compiled
+    void typeAnnotations_data();
+    void typeAnnotations();
+#endif
 
 private:
     QStringList excludedDirs;
@@ -103,6 +107,22 @@ public:
     virtual void postVisit(AST::Node *)
     {
         nodeStack.removeLast();
+    }
+};
+
+struct TypeAnnotationObserver: public AST::Visitor
+{
+    bool typeAnnotationSeen = false;
+
+    void operator()(AST::Node *node)
+    {
+        AST::Node::accept(node, this);
+    }
+
+    virtual bool visit(AST::TypeAnnotation *)
+    {
+        typeAnnotationSeen = true;
+        return true;
     }
 };
 
@@ -273,6 +293,48 @@ void tst_qqmlparser::templateLiteral()
     auto *e = templateLiteral->expression;
     QVERIFY(e);
 }
+
+#if !defined(QTEST_CROSS_COMPILED) // sources not available when cross compiled
+void tst_qqmlparser::typeAnnotations_data()
+{
+    QTest::addColumn<QString>("file");
+
+    QString tests = QLatin1String(SRCDIR) + "/data/typeannotations/";
+
+    QStringList files;
+    files << findFiles(QDir(tests));
+
+    for (const QString &file: qAsConst(files))
+        QTest::newRow(qPrintable(file)) << file;
+}
+
+void tst_qqmlparser::typeAnnotations()
+{
+    using namespace QQmlJS;
+
+    QFETCH(QString, file);
+
+    QString code;
+
+    QFile f(file);
+    if (f.open(QFile::ReadOnly))
+        code = QString::fromUtf8(f.readAll());
+
+    const bool qmlMode = file.endsWith(QLatin1String(".qml"));
+
+    Engine engine;
+    Lexer lexer(&engine);
+    lexer.setCode(code, 1, qmlMode);
+    Parser parser(&engine);
+    bool ok = qmlMode ? parser.parse() : parser.parseProgram();
+    QVERIFY(ok);
+
+    check::TypeAnnotationObserver observer;
+    observer(parser.rootNode());
+
+    QVERIFY(observer.typeAnnotationSeen);
+}
+#endif
 
 QTEST_MAIN(tst_qqmlparser)
 

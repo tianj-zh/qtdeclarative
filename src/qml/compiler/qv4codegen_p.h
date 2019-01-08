@@ -597,6 +597,8 @@ protected:
 
     bool visit(AST::ExportDeclaration *ast) override;
 
+    bool visit(AST::TypeAnnotation *ast) override;
+
     // expressions
     bool visit(AST::Expression *ast) override;
     bool visit(AST::ArrayPattern *ast) override;
@@ -735,6 +737,7 @@ protected:
     bool inFormalParameterList = false;
     bool functionEndsWithReturn = false;
     bool _tailCallsAreAllowed = true;
+    bool permitTypeAnnotations = false;
     QSet<QString> m_globalNames;
 
     ControlFlow *controlFlow = nullptr;

@@ -621,6 +621,8 @@ void Codegen::initializeAndDestructureBindingElement(AST::PatternElement *e, con
     if (hasError)
         return;
 
+    accept(e->typeAnnotation);
+
     if (e->initializer) {
         if (!baseRef.isValid()) {
             // assignment
@@ -911,6 +913,15 @@ bool Codegen::visit(ExportDeclaration *ast)
     defaultExportSlot.storeConsumeAccumulator();
 
     return false;
+}
+
+bool Codegen::visit(TypeAnnotation *ast)
+{
+    if (!permitTypeAnnotations) {
+        throwSyntaxError(ast->firstSourceLocation(), QLatin1String("Type annotations are not supported (yet)."));
+        return false;
+    }
+    return true;
 }
 
 bool Codegen::visit(StatementList *)
