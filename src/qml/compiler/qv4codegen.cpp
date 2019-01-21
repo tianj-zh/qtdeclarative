@@ -630,7 +630,7 @@ void Codegen::initializeAndDestructureBindingElement(AST::PatternElement *e, con
             if (hasError)
                 return;
             expr.loadInAccumulator();
-            varToStore.storeConsumeAccumulator();
+            varToStore.storeConsumeAccumulator(expr.inferredType);
         } else if (baseRef == varToStore) {
             baseRef.loadInAccumulator();
             BytecodeGenerator::Jump jump = bytecodeGenerator->jumpNotUndefined();
@@ -2300,7 +2300,10 @@ bool Codegen::visit(FieldMemberExpression *ast)
         _expr.setResult(Reference::fromSuperProperty(property));
         return false;
     }
-    _expr.setResult(Reference::fromMember(base, ast->name.toString()));
+    auto member = Reference::fromMember(base, ast->name.toString());
+    if (m_typeResolver && base.type)
+        member.inferredType = m_typeResolver(base.inferredType, ast->name.toString());
+    _expr.setResult(member);
     return false;
 }
 
@@ -2417,6 +2420,10 @@ Codegen::Reference Codegen::referenceForName(const QString &name, bool isLhs, co
     r.global = useFastLookups && (resolved.type == Context::ResolvedName::Global);
     if (!r.global && m_globalNames.contains(name))
         r.global = true;
+
+    if (m_typeResolver)
+        r.inferredType = m_typeResolver(nullptr, name);
+
     return r;
 }
 
@@ -4118,9 +4125,9 @@ Codegen::Reference Codegen::Reference::asLValue() const
     }
 }
 
-Codegen::Reference Codegen::Reference::storeConsumeAccumulator() const
+Codegen::Reference Codegen::Reference::storeConsumeAccumulator(Type *type) const
 {
-    storeAccumulator(); // it doesn't matter what happens here, just do it.
+    storeAccumulator(type); // it doesn't matter what happens here, just do it.
     return Reference();
 }
 
@@ -4219,7 +4226,7 @@ bool Codegen::Reference::storeWipesAccumulator() const
     }
 }
 
-void Codegen::Reference::storeAccumulator() const
+void Codegen::Reference::storeAccumulator(AST::Type *sourceType) const
 {
     if (isReferenceToConst) {
         // throw a type error
@@ -4235,7 +4242,7 @@ void Codegen::Reference::storeAccumulator() const
         codegen->bytecodeGenerator->addInstruction(throwException);
         return;
     }
-    switch (type) {
+    switch (sourceType) {
     case Super:
         Q_UNREACHABLE();
         return;

@@ -79,6 +79,8 @@ struct ControlFlow;
 struct ControlFlowCatch;
 struct ControlFlowFinally;
 
+using TypeResolver = std::function<QQmlJS::AST::Type *(QQmlJS::AST::Type *type, const QString &property)>;
+
 class Q_QML_PRIVATE_EXPORT Codegen: protected QQmlJS::AST::Visitor
 {
 protected:
@@ -353,7 +355,7 @@ public:
         Q_REQUIRED_RESULT Reference storeOnStack() const;
         void storeOnStack(int tempIndex) const;
         Q_REQUIRED_RESULT Reference storeRetainAccumulator() const;
-        Reference storeConsumeAccumulator() const;
+        Reference storeConsumeAccumulator(AST::Type *type = nullptr) const;
 
         Q_REQUIRED_RESULT Reference baseObject() const;
 
@@ -403,10 +405,11 @@ public:
         bool stackSlotIsLocalOrArgument = false;
         bool isVolatile = false;
         bool global = false;
+        AST::Type *inferredType = nullptr;
         Codegen *codegen = nullptr;
 
     private:
-        void storeAccumulator() const;
+        void storeAccumulator(AST::Type *sourceType = nullptr) const;
         Reference doStoreOnStack(int tempIndex) const;
     };
 
@@ -714,6 +717,7 @@ public:
         m_globalNames = globalNames;
     }
 
+    void setTypeResolver(TypeResolver resolver) { permitTypeAnnotations = true; m_typeResolver = resolver; }
 
 protected:
     friend class ScanFunctions;
@@ -738,6 +742,7 @@ protected:
     bool functionEndsWithReturn = false;
     bool _tailCallsAreAllowed = true;
     bool permitTypeAnnotations = false;
+    TypeResolver m_typeResolver;
     QSet<QString> m_globalNames;
 
     ControlFlow *controlFlow = nullptr;

@@ -29,6 +29,11 @@
 #include <qtest.h>
 #include <private/qv4instr_moth_p.h>
 #include <private/qv4script_p.h>
+#include <private/qqmljslexer_p.h>
+#include <private/qqmljsparser_p.h>
+#include <private/qv4compiler_p.h>
+#include <private/qv4codegen_p.h>
+#include <private/qqmlirbuilder_p.h>
 
 class tst_v4misc: public QObject
 {
@@ -45,6 +50,8 @@ private slots:
     void subClassing();
 
     void nestingDepth();
+
+    void typePropagation();
 };
 
 void tst_v4misc::tdzOptimizations_data()
@@ -195,6 +202,65 @@ void tst_v4misc::nestingDepth()
         QVERIFY(result.isError());
         QCOMPARE(result.toString(), "SyntaxError: Maximum statement or expression depth exceeded");
     }
+}
+
+void tst_v4misc::typePropagation()
+{
+    using namespace QV4::Compiler;
+    using namespace QQmlJS;
+
+    const QString sourceCode = QStringLiteral("var x = globalValue.subObject.num");
+
+    Module module(/*debug*/false);
+    Engine ee, *engine = &ee;
+    Lexer lexer(engine);
+    lexer.setCode(sourceCode, /*line*/1, /*parseAsBinding*/false);
+    Parser parser(engine);
+
+    const bool parsed = parser.parseProgram();
+    QVERIFY(parsed);
+    using namespace AST;
+    Program *program = AST::cast<Program *>(parser.rootNode());
+    QV4::Compiler::JSUnitGenerator jsGenerator(&module);
+    Codegen cg(&jsGenerator, /*strictMode*/false);
+
+    auto *pool = ee.pool();
+
+    auto resolver = [pool](const Type *baseType, const QString &name) -> Type* {
+        if (baseType == nullptr) {
+            if (name == "globalValue") {
+                auto type = new (pool) UiQualifiedId(pool->newString("GlobalType"));
+                return new (pool) Type(type->finish());
+            }
+            return nullptr;
+        }
+
+        QString simpleBaseTypeName = baseType->typeId ? QmlIR::IRBuilder::asString(baseType->typeId) : QString();
+
+        if (simpleBaseTypeName == "GlobalType") {
+            if (name == "subObject") {
+                auto type = new (pool) UiQualifiedId(pool->newString("SubObjectType"));
+                return new (pool) Type(type->finish());
+            }
+            return nullptr;
+        }
+
+        if (simpleBaseTypeName == "SubObjectType") {
+            if (name == "num") {
+                auto type = new (pool) UiQualifiedId(pool->newString("Number"));
+                return new (pool) Type(type->finish());
+            }
+        }
+
+        return nullptr;
+    };
+
+    cg.setTypeResolver(resolver);
+
+    qputenv("QV4_SHOW_BYTECODE", "1");
+
+    cg.generateFromProgram("test.js", "test.js", sourceCode, program, &module);
+    QVERIFY(cg.errors().isEmpty());
 }
 
 QTEST_MAIN(tst_v4misc);
