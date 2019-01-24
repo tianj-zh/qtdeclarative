@@ -669,7 +669,10 @@ void QQuickContext2DImageTexture::grabImage(const QRectF& rf)
     Q_ASSERT(rf.isValid());
     QQuickContext2D::mutex.lock();
     if (m_context) {
-        QImage grabbed = m_displayImage.copy(rf.toRect());
+        const qreal devicePixelRatio = (m_item && m_item->window()) ?
+            m_item->window()->effectiveDevicePixelRatio() : qApp->devicePixelRatio();
+        QRect temp_rect = rf.toRect();
+        QImage grabbed = m_displayImage.copy(temp_rect.x() * devicePixelRatio,  temp_rect.y() * devicePixelRatio, temp_rect.width() * devicePixelRatio, temp_rect.height() * devicePixelRatio);
         m_context->setGrabbedImage(grabbed);
     }
     QQuickContext2D::mutex.unlock();
